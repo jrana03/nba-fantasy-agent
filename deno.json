@@ -1,0 +1,4 @@
+{
+  "nodeModulesDir": "none",
+  "lint": { "include": ["supabase/functions", "dev"] }
+}

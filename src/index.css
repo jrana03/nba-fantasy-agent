@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens (RGB triplets so Tailwind opacity modifiers like bg-accent/10 work). */
+:root {
+  --bg: 245 245 244;
+  --surface: 255 255 255;
+  --surface-2: 238 238 236;
+  --line: 212 212 208;
+  --fg: 10 10 10;
+  --muted: 100 100 100;
+  --accent: 21 128 61;
+  --warn: 161 98 7;
+  --danger: 185 28 28;
+}
+
+.dark {
+  --bg: 5 5 5;
+  --surface: 13 13 13;
+  --surface-2: 22 22 22;
+  --line: 40 40 40;
+  --fg: 229 229 229;
+  --muted: 140 140 140;
+  --accent: 0 230 118;
+  --warn: 234 179 8;
+  --danger: 239 68 68;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-fg antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply border border-line bg-surface;
+  }
+  .select {
+    @apply border border-line bg-surface px-3 py-2 font-mono text-sm text-fg
+      focus:outline-none focus:ring-1 focus:ring-accent;
+  }
+  .label {
+    @apply font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-muted;
+  }
+}
+
+/* Rotating bar loader. */
+@keyframes bar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin-bar {
+  animation: bar-spin 0.8s linear infinite;
+}
