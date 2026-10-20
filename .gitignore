@@ -4,7 +4,6 @@ dist
 # Secrets: never commit real env files (.env.production only holds the public Functions URL)
 .env
 .env.*
-!.env.example
 !.env.production
 
 # Local tooling state

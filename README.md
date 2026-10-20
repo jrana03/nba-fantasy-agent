@@ -85,7 +85,7 @@ cd nba-fantasy-agent
 npm install
 ```
 
-Create a `.env` file in the project root (copy `.env.example`) and **paste in your own OpenAI API key**:
+Create a `.env` file in the project root and **paste in your own OpenAI API key**:
 
 ```bash
 OPENAI_API_KEY=sk-your-key-here
