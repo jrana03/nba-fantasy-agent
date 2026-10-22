@@ -2,12 +2,13 @@
 // table (in memory when running locally without Supabase credentials). IDs are ESPN athlete IDs.
 import { getValue, setValue } from "./cache.ts";
 
-export type RosterPlayer = { id: string; name: string };
+export type LineupStatus = "starting" | "bench";
+export type RosterPlayer = { id: string; name: string; lineup?: LineupStatus };
 
 const ROSTER_KEY = "roster:v1";
 export const MAX_ROSTER = 20;
 
-/** Starting team, used only until the roster is first edited. */
+/** Default players, used only until the roster is first edited. */
 const DEFAULT_ROSTER: RosterPlayer[] = [
   { id: "3945274", name: "Luka Dončić" },
   { id: "4432166", name: "Cade Cunningham" },
@@ -25,7 +26,9 @@ const DEFAULT_ROSTER: RosterPlayer[] = [
 ];
 
 export async function getRoster(): Promise<RosterPlayer[]> {
-  return (await getValue<RosterPlayer[]>(ROSTER_KEY)) ?? DEFAULT_ROSTER;
+  const players = (await getValue<RosterPlayer[]>(ROSTER_KEY)) ?? DEFAULT_ROSTER;
+  // Existing saved rosters predate lineup labels. Keep their players and treat them as starters.
+  return players.map((player) => ({ ...player, lineup: player.lineup === "bench" ? "bench" : "starting" }));
 }
 
 export async function saveRoster(players: RosterPlayer[]): Promise<void> {

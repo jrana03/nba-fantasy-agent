@@ -5,6 +5,7 @@
 //   { action: "add",     player: { id } }                add a player
 //   { action: "remove",  id }                            remove a player
 //   { action: "replace", id, player: { id } }            swap one player for another (keeps list position)
+//   { action: "set-lineup", id, lineup: "starting" | "bench" }  set a planning label
 //   { action: "check" }                                  only verify the password
 // Players are looked up on ESPN by id, so the stored name/id always match a real NBA player.
 import { getAthlete, searchPlayers } from "../_shared/espn.ts";
@@ -19,7 +20,7 @@ const validId = (id: unknown) => typeof id === "string" && /^\d{1,12}$/.test(id)
 /** The player as ESPN knows them, or null if the id isn't a real player. */
 async function resolvePlayer(id: string): Promise<RosterPlayer | null> {
   const athlete = await getAthlete(id).catch(() => null);
-  return athlete?.name ? { id, name: athlete.name } : null;
+  return athlete?.name ? { id, name: athlete.name, lineup: "starting" } : null;
 }
 
 const notFound = () => invalid("Couldn't find that player on ESPN. Try searching again.");
@@ -73,7 +74,17 @@ export const handler = withHttp(async (req) => {
       if (newId !== id && has(newId)) return invalid("That player is already on your team.");
       const replacement = await resolvePlayer(newId);
       if (!replacement) return notFound();
-      roster = roster.map((p) => (p.id === id ? replacement : p));
+      roster = roster.map((p) => (p.id === id ? { ...replacement, lineup: p.lineup } : p));
+      break;
+    }
+
+    case "set-lineup": {
+      const id = String(body.id ?? "");
+      if (!has(id)) return invalid("That player isn't on your team.");
+      if (body.lineup !== "starting" && body.lineup !== "bench") {
+        return invalid("Choose Starting or Bench.");
+      }
+      roster = roster.map((p) => (p.id === id ? { ...p, lineup: body.lineup } : p));
       break;
     }
 

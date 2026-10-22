@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, CalendarDays, ChevronRight, Clock, Lock, LockOpen, MapPin, RefreshCw, Tv, UserCheck } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, CalendarDays, ChevronRight, Clock, Lock, LockOpen, MapPin, RefreshCw, Tv, UserCheck } from 'lucide-react'
 import { checkRefreshPassword, getHome } from '../lib/api.js'
 import { clearRefreshPassword, getRefreshPassword, storeRefreshPassword } from '../lib/auth.js'
 import PasswordModal from '../components/PasswordModal.jsx'
-import { rosterName, useRoster } from '../lib/roster.js'
+import { changeRoster, rosterName, useRoster } from '../lib/roster.js'
 import RosterEditor from '../components/RosterEditor.jsx'
 import { gameDate, gameTime, venueText } from '../lib/format.js'
 import Loader from '../components/Loader.jsx'
@@ -14,7 +14,7 @@ export default function Home() {
   const [error, setError] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState(null)
-  useRoster() // re-render when the roster loads/changes (rosterName lookups below)
+  const { players: rosterPlayers } = useRoster()
 
   useEffect(() => {
     getHome().then(setData).catch(setError)
@@ -23,6 +23,9 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false)
   const [passwordError, setPasswordError] = useState('')
   const [unlocked, setUnlocked] = useState(() => !!getRefreshPassword())
+  const [pendingLineup, setPendingLineup] = useState(null)
+  const [lineupBusy, setLineupBusy] = useState(null)
+  const [lineupError, setLineupError] = useState(null)
 
   // Forces a new agent run (otherwise the server reuses today's results until the next day).
   const runRefresh = (password) => {
@@ -49,8 +52,37 @@ export default function Home() {
 
   // Same flow as FoodTrack: run immediately if already unlocked, otherwise ask for the password first.
   const requestRefresh = () => {
+    setPendingLineup(null)
     const saved = getRefreshPassword()
     if (saved) return runRefresh(saved)
+    setPasswordError('')
+    setShowPassword(true)
+  }
+
+  const moveToStarting = async (id, password) => {
+    setLineupBusy(id)
+    setLineupError(null)
+    try {
+      await changeRoster({ action: 'set-lineup', id, lineup: 'starting' }, password)
+    } catch (e) {
+      if (e.source === 'auth') {
+        clearRefreshPassword()
+        setUnlocked(false)
+        setPendingLineup(id)
+        setPasswordError(e.message)
+        setShowPassword(true)
+      } else {
+        setLineupError(e)
+      }
+    } finally {
+      setLineupBusy(null)
+    }
+  }
+
+  const requestStarting = (id) => {
+    const saved = getRefreshPassword()
+    if (saved) return moveToStarting(id, saved)
+    setPendingLineup(id)
     setPasswordError('')
     setShowPassword(true)
   }
@@ -60,7 +92,13 @@ export default function Home() {
     storeRefreshPassword(password, remember)
     setUnlocked(true)
     setShowPassword(false)
-    runRefresh(password)
+    if (pendingLineup) {
+      const id = pendingLineup
+      setPendingLineup(null)
+      moveToStarting(id, password)
+    } else {
+      runRefresh(password)
+    }
   }
 
   // After a roster edit the server builds a new snapshot for the new team (the agent runs once for it).
@@ -73,6 +111,9 @@ export default function Home() {
 
   const teamOf = (id) => data?.players?.find((p) => p.id === id)?.team
   const agentError = data?.agent?.state === 'error' || data?.agent?.state === 'disabled' ? data.agent.error : null
+  const lineupById = new Map(rosterPlayers?.map((p) => [p.id, p.lineup]) ?? [])
+  const benchGames = data?.upcomingGames.filter((g) => g.players.some((p) => lineupById.get(p.id) === 'bench')) ?? []
+  const otherGames = data?.upcomingGames.filter((g) => !g.players.some((p) => lineupById.get(p.id) === 'bench')) ?? []
 
   return (
     <div className="grid gap-6 lg:grid-cols-[250px_1fr]">
@@ -109,12 +150,26 @@ export default function Home() {
           </div>
         </Section>
 
-        <Section title="Upcoming Games" subtitle="Next game for each team with one of my players, plus anything affecting availability.">
+        <Section title="Upcoming Games" subtitle="Next game for each team with one of my players. Bench labels help you review who to start; changes here do not update your fantasy platform.">
           {!data && !error && <div className="card h-32 animate-pulse" />}
           {data && data.upcomingGames.length === 0 && <Empty text="No upcoming games scheduled." />}
-          <div className="grid gap-4 md:grid-cols-2">
-            {data?.upcomingGames.map((g) => <UpcomingGame key={g.id} game={g} />)}
-          </div>
+          {lineupError && <ErrorBox error={lineupError} />}
+          {benchGames.length > 0 && (
+            <div>
+              <h3 className="label mb-2 !text-warn">Bench decisions · {benchGames.length} {benchGames.length === 1 ? 'game' : 'games'}</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                {benchGames.map((g) => <UpcomingGame key={g.id} game={g} lineupById={lineupById} onStart={requestStarting} lineupBusy={lineupBusy} />)}
+              </div>
+            </div>
+          )}
+          {otherGames.length > 0 && (
+            <div>
+              {benchGames.length > 0 && <h3 className="label mb-2">Other games</h3>}
+              <div className="grid gap-4 md:grid-cols-2">
+                {otherGames.map((g) => <UpcomingGame key={g.id} game={g} lineupById={lineupById} onStart={requestStarting} lineupBusy={lineupBusy} />)}
+              </div>
+            </div>
+          )}
         </Section>
 
         {data && (
@@ -126,10 +181,10 @@ export default function Home() {
 
       <PasswordModal
         isOpen={showPassword}
-        hint="to re-run the agent (uses OpenAI credits)"
+        hint={pendingLineup ? 'to move this player to Starting' : 'to re-run the agent (uses OpenAI credits)'}
         error={passwordError}
         onSubmit={unlock}
-        onCancel={() => setShowPassword(false)}
+        onCancel={() => { setShowPassword(false); setPendingLineup(null) }}
       />
     </div>
   )
@@ -274,20 +329,30 @@ const statusTone = (status = '') => {
   return 'border-accent/50 bg-accent/10 text-accent'
 }
 
-function UpcomingGame({ game }) {
+function UpcomingGame({ game, lineupById, onStart, lineupBusy }) {
+  const hasBench = game.players.some((p) => lineupById.get(p.id) === 'bench')
   return (
-    <article className="card p-5">
+    <article className={`card p-5 ${hasBench ? 'border-l-2 border-l-warn' : ''}`}>
       <Matchup game={game} />
       <div className="mt-3">
         <GameMeta game={game} />
       </div>
       <div className="mt-4 space-y-2">
-        {game.players.map((p) => (
-          <div key={p.id} className="border border-line bg-surface2 px-3 py-2">
-            <div className="flex items-center justify-between gap-2">
+        {game.players.map((p) => {
+          const lineup = lineupById.get(p.id)
+          return (
+          <div key={p.id} className={`border bg-surface2 px-3 py-2 ${lineup === 'bench' ? 'border-warn/50' : 'border-line'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Link to={`/player/${p.id}`} className="font-medium hover:text-accent">
                 {rosterName(p.id, p.name)} <span className="font-mono text-[11px] text-muted">{p.team}</span>
               </Link>
+              {lineup && (
+                <span className={`border px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${lineup === 'bench' ? 'border-warn/50 bg-warn/10 text-warn' : 'border-accent/50 bg-accent/10 text-accent'}`}>
+                  {lineup === 'bench' ? 'On bench' : 'Starting'}
+                </span>
+              )}
+            </div>
+            <div className="mt-1.5">
               {p.availability ? (
                 <span className={`border px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${statusTone(p.availability.status)}`}>
                   {p.availability.status}
@@ -299,8 +364,19 @@ function UpcomingGame({ game }) {
               )}
             </div>
             {p.availability?.note && <p className="mt-1 text-sm text-muted">{p.availability.note}</p>}
+            {lineup === 'bench' && (
+              <button
+                type="button"
+                disabled={!!lineupBusy}
+                onClick={() => onStart(p.id)}
+                className="mt-2 inline-flex items-center gap-1 border border-warn/60 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-warn hover:bg-warn/10 disabled:opacity-50"
+              >
+                <ArrowUpRight size={12} /> {lineupBusy === p.id ? 'Saving…' : 'Move to Starting'}
+              </button>
+            )}
           </div>
-        ))}
+          )
+        })}
       </div>
     </article>
   )

@@ -51,7 +51,8 @@ export default function RosterEditor({ teamOf, onDone, onUnlock }) {
     setMessage(null)
     try {
       await changeRoster(change, getRefreshPassword())
-      setChanged(true)
+      // A lineup label changes the planner immediately; it doesn't require a new agent snapshot.
+      if (change.action !== 'set-lineup') setChanged(true)
       setReplacing(null)
     } catch (e) {
       if (e.source === 'auth') {
@@ -98,13 +99,14 @@ export default function RosterEditor({ teamOf, onDone, onUnlock }) {
           {players.length === 0 && <li className="text-sm text-muted">No players yet. Click Edit to add some.</li>}
           {players.map((p) => (
             <li key={p.id}>
-              <Link
-                to={`/player/${p.id}`}
-                className="group flex items-center justify-between border-l-2 border-transparent px-2 py-1.5 hover:border-accent hover:bg-surface2"
-              >
-                <span className="font-medium group-hover:text-accent">{p.name}</span>
-                <span className="font-mono text-[11px] text-muted">{teamOf(p.id)?.abbr ?? ''}</span>
-              </Link>
+              <div className="flex items-center gap-2 border-l-2 border-transparent px-2 py-1.5 hover:border-accent hover:bg-surface2">
+                <Link to={`/player/${p.id}`} className="min-w-0 flex-1 truncate font-medium hover:text-accent">
+                  {p.name} <span className="font-mono text-[10px] text-muted">{teamOf(p.id)?.abbr ?? ''}</span>
+                </Link>
+                <span className={`shrink-0 border px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide ${p.lineup === 'bench' ? 'border-warn/50 text-warn' : 'border-accent/50 text-accent'}`}>
+                  {p.lineup === 'bench' ? 'Bench' : 'Starting'}
+                </span>
+              </div>
             </li>
           ))}
         </ul>
@@ -125,20 +127,36 @@ export default function RosterEditor({ teamOf, onDone, onUnlock }) {
                 onCancel={() => setReplacing(null)}
               />
             ) : (
-              <div key={p.id} className="flex items-center gap-1 border border-line bg-surface2 py-1 pl-2 pr-1">
-                <span className={`min-w-0 flex-1 truncate text-sm font-medium ${busy === p.id ? 'opacity-40' : ''}`}>{p.name}</span>
-                <button type="button" className={iconBtn} title={`Replace ${p.name}`} disabled={!!busy} onClick={() => { setMessage(null); setReplacing(p.id) }}>
-                  <Pencil size={13} />
-                </button>
-                <button
-                  type="button"
-                  className={`${iconBtn} hover:!text-danger`}
-                  title={`Remove ${p.name}`}
-                  disabled={!!busy}
-                  onClick={() => apply({ action: 'remove', id: p.id }, p.id)}
-                >
-                  <X size={14} />
-                </button>
+              <div key={p.id} className="border border-line bg-surface2 p-2">
+                <div className="flex items-center gap-1">
+                  <span className={`min-w-0 flex-1 truncate text-sm font-medium ${busy === p.id ? 'opacity-40' : ''}`}>{p.name}</span>
+                  <button type="button" className={iconBtn} title={`Replace ${p.name}`} disabled={!!busy} onClick={() => { setMessage(null); setReplacing(p.id) }}>
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`${iconBtn} hover:!text-danger`}
+                    title={`Remove ${p.name}`}
+                    disabled={!!busy}
+                    onClick={() => apply({ action: 'remove', id: p.id }, p.id)}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="mt-1.5 grid grid-cols-2 gap-1" role="group" aria-label={`${p.name} lineup status`}>
+                  {['starting', 'bench'].map((lineup) => (
+                    <button
+                      key={lineup}
+                      type="button"
+                      aria-pressed={(p.lineup ?? 'starting') === lineup}
+                      disabled={!!busy}
+                      onClick={() => apply({ action: 'set-lineup', id: p.id, lineup }, p.id)}
+                      className={`border px-1 py-1 font-mono text-[10px] font-bold uppercase tracking-wide disabled:opacity-40 ${(p.lineup ?? 'starting') === lineup ? (lineup === 'bench' ? 'border-warn bg-warn/10 text-warn' : 'border-accent bg-accent/10 text-accent') : 'border-line text-muted hover:text-fg'}`}
+                    >
+                      {lineup}
+                    </button>
+                  ))}
+                </div>
               </div>
             ),
           )}
@@ -157,7 +175,7 @@ export default function RosterEditor({ teamOf, onDone, onUnlock }) {
           </div>
 
           {message && <p className="pt-2 text-[13px] text-danger">{message}</p>}
-          <p className="pt-2 text-[11px] text-muted">Changes save immediately. Game summaries update when you click Done.</p>
+          <p className="pt-2 text-[11px] text-muted">Changes save immediately. Starting/Bench are planning labels here; update your fantasy platform separately. Game summaries update when you click Done.</p>
         </div>
       )}
 
