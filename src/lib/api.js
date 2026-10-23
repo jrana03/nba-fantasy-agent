@@ -136,6 +136,6 @@ export const searchNbaPlayers = (q) => api(`nba-roster?search=${encodeURICompone
 /** Roster change (add / remove / replace / check). Requires the edit password. Drops the cached home page. */
 export async function updateRoster(change, password) {
   const data = await api('nba-roster', { body: change, headers: { 'x-refresh-password': password ?? '' } })
-  if (change.action !== 'check' && change.action !== 'set-lineup') cache.delete('nba-home')
+  if (!['check', 'set-lineup', 'swap-lineup'].includes(change.action)) cache.delete('nba-home')
   return data
 }

@@ -6,6 +6,7 @@
 //   { action: "remove",  id }                            remove a player
 //   { action: "replace", id, player: { id } }            swap one player for another (keeps list position)
 //   { action: "set-lineup", id, lineup: "starting" | "bench" }  set a planning label
+//   { action: "swap-lineup", benchId, starterId }          exchange a bench player with a starter
 //   { action: "check" }                                  only verify the password
 // Players are looked up on ESPN by id, so the stored name/id always match a real NBA player.
 import { getAthlete, searchPlayers } from "../_shared/espn.ts";
@@ -85,6 +86,26 @@ export const handler = withHttp(async (req) => {
         return invalid("Choose Starting or Bench.");
       }
       roster = roster.map((p) => (p.id === id ? { ...p, lineup: body.lineup } : p));
+      break;
+    }
+
+    case "swap-lineup": {
+      const benchId = String(body.benchId ?? "");
+      const starterId = String(body.starterId ?? "");
+      if (benchId === starterId || !has(benchId) || !has(starterId)) {
+        return invalid("Choose a bench player and a different starter from your team.");
+      }
+      const benchPlayer = roster.find((p) => p.id === benchId);
+      const starter = roster.find((p) => p.id === starterId);
+      if (benchPlayer?.lineup !== "bench" || starter?.lineup !== "starting") {
+        return invalid("Lineup changed since you opened the swap. Choose a current starter and try again.");
+      }
+      // Save both positions in one roster write so a swap cannot leave two starters or two bench players.
+      roster = roster.map((p) =>
+        p.id === benchId ? { ...p, lineup: "starting" }
+          : p.id === starterId ? { ...p, lineup: "bench" }
+          : p
+      );
       break;
     }
 

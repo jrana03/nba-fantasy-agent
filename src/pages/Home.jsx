@@ -4,7 +4,8 @@ import { AlertTriangle, ArrowUpRight, CalendarDays, ChevronRight, Clock, Lock, L
 import { checkRefreshPassword, getHome } from '../lib/api.js'
 import { clearRefreshPassword, getRefreshPassword, storeRefreshPassword } from '../lib/auth.js'
 import PasswordModal from '../components/PasswordModal.jsx'
-import { changeRoster, rosterName, useRoster } from '../lib/roster.js'
+import LineupSwapModal from '../components/LineupSwapModal.jsx'
+import { changeRoster, loadRoster, rosterName, useRoster } from '../lib/roster.js'
 import RosterEditor from '../components/RosterEditor.jsx'
 import { gameDate, gameTime, venueText } from '../lib/format.js'
 import Loader from '../components/Loader.jsx'
@@ -23,7 +24,8 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false)
   const [passwordError, setPasswordError] = useState('')
   const [unlocked, setUnlocked] = useState(() => !!getRefreshPassword())
-  const [pendingLineup, setPendingLineup] = useState(null)
+  const [swapBenchId, setSwapBenchId] = useState(null)
+  const [pendingSwap, setPendingSwap] = useState(null)
   const [lineupBusy, setLineupBusy] = useState(null)
   const [lineupError, setLineupError] = useState(null)
 
@@ -52,37 +54,40 @@ export default function Home() {
 
   // Same flow as FoodTrack: run immediately if already unlocked, otherwise ask for the password first.
   const requestRefresh = () => {
-    setPendingLineup(null)
+    setPendingSwap(null)
     const saved = getRefreshPassword()
     if (saved) return runRefresh(saved)
     setPasswordError('')
     setShowPassword(true)
   }
 
-  const moveToStarting = async (id, password) => {
-    setLineupBusy(id)
+  const swapPlayers = async ({ benchId, starterId }, password) => {
+    setLineupBusy(benchId)
     setLineupError(null)
     try {
-      await changeRoster({ action: 'set-lineup', id, lineup: 'starting' }, password)
+      await changeRoster({ action: 'swap-lineup', benchId, starterId }, password)
     } catch (e) {
       if (e.source === 'auth') {
         clearRefreshPassword()
         setUnlocked(false)
-        setPendingLineup(id)
+        setPendingSwap({ benchId, starterId })
         setPasswordError(e.message)
         setShowPassword(true)
       } else {
         setLineupError(e)
+        if (e.source === 'validation') loadRoster()
       }
     } finally {
       setLineupBusy(null)
     }
   }
 
-  const requestStarting = (id) => {
+  const requestSwap = (benchId, starterId) => {
+    setSwapBenchId(null)
+    const swap = { benchId, starterId }
     const saved = getRefreshPassword()
-    if (saved) return moveToStarting(id, saved)
-    setPendingLineup(id)
+    if (saved) return swapPlayers(swap, saved)
+    setPendingSwap(swap)
     setPasswordError('')
     setShowPassword(true)
   }
@@ -92,10 +97,10 @@ export default function Home() {
     storeRefreshPassword(password, remember)
     setUnlocked(true)
     setShowPassword(false)
-    if (pendingLineup) {
-      const id = pendingLineup
-      setPendingLineup(null)
-      moveToStarting(id, password)
+    if (pendingSwap) {
+      const swap = pendingSwap
+      setPendingSwap(null)
+      swapPlayers(swap, password)
     } else {
       runRefresh(password)
     }
@@ -158,7 +163,7 @@ export default function Home() {
             <div>
               <h3 className="label mb-2 !text-warn">Bench decisions · {benchGames.length} {benchGames.length === 1 ? 'game' : 'games'}</h3>
               <div className="grid gap-4 md:grid-cols-2">
-                {benchGames.map((g) => <UpcomingGame key={g.id} game={g} lineupById={lineupById} onStart={requestStarting} lineupBusy={lineupBusy} />)}
+                {benchGames.map((g) => <UpcomingGame key={g.id} game={g} lineupById={lineupById} onSwap={setSwapBenchId} lineupBusy={lineupBusy} />)}
               </div>
             </div>
           )}
@@ -166,7 +171,7 @@ export default function Home() {
             <div>
               {benchGames.length > 0 && <h3 className="label mb-2">Other games</h3>}
               <div className="grid gap-4 md:grid-cols-2">
-                {otherGames.map((g) => <UpcomingGame key={g.id} game={g} lineupById={lineupById} onStart={requestStarting} lineupBusy={lineupBusy} />)}
+                {otherGames.map((g) => <UpcomingGame key={g.id} game={g} lineupById={lineupById} onSwap={setSwapBenchId} lineupBusy={lineupBusy} />)}
               </div>
             </div>
           )}
@@ -179,12 +184,21 @@ export default function Home() {
         )}
       </div>
 
+      {swapBenchId && rosterPlayers?.some((p) => p.id === swapBenchId) && (
+        <LineupSwapModal
+          benchPlayer={rosterPlayers.find((p) => p.id === swapBenchId)}
+          starters={rosterPlayers.filter((p) => p.lineup === 'starting')}
+          teamOf={teamOf}
+          onConfirm={(starterId) => requestSwap(swapBenchId, starterId)}
+          onCancel={() => setSwapBenchId(null)}
+        />
+      )}
       <PasswordModal
         isOpen={showPassword}
-        hint={pendingLineup ? 'to move this player to Starting' : 'to re-run the agent (uses OpenAI credits)'}
+        hint={pendingSwap ? 'to swap these players between Starting and Bench' : 'to re-run the agent (uses OpenAI credits)'}
         error={passwordError}
         onSubmit={unlock}
-        onCancel={() => { setShowPassword(false); setPendingLineup(null) }}
+        onCancel={() => { setShowPassword(false); setPendingSwap(null) }}
       />
     </div>
   )
@@ -329,7 +343,7 @@ const statusTone = (status = '') => {
   return 'border-accent/50 bg-accent/10 text-accent'
 }
 
-function UpcomingGame({ game, lineupById, onStart, lineupBusy }) {
+function UpcomingGame({ game, lineupById, onSwap, lineupBusy }) {
   const hasBench = game.players.some((p) => lineupById.get(p.id) === 'bench')
   return (
     <article className={`card p-5 ${hasBench ? 'border-l-2 border-l-warn' : ''}`}>
@@ -368,7 +382,7 @@ function UpcomingGame({ game, lineupById, onStart, lineupBusy }) {
               <button
                 type="button"
                 disabled={!!lineupBusy}
-                onClick={() => onStart(p.id)}
+                onClick={() => onSwap(p.id)}
                 className="mt-2 inline-flex items-center gap-1 border border-warn/60 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-warn hover:bg-warn/10 disabled:opacity-50"
               >
                 <ArrowUpRight size={12} /> {lineupBusy === p.id ? 'Saving…' : 'Move to Starting'}

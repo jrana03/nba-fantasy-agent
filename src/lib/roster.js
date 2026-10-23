@@ -18,7 +18,7 @@ export function loadRoster() {
   return inflight
 }
 
-/** Applies a change ({ action: 'add' | 'remove' | 'replace', ... }) and updates every subscriber. */
+/** Applies a roster or lineup change and updates every subscriber. */
 export async function changeRoster(change, password) {
   const d = await updateRoster(change, password)
   set({ players: d.players, error: null })

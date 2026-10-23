@@ -15,8 +15,8 @@ Every player also gets a stats page that compares each game against their career
   averages, and a game log that highlights the selected stat.
 - **Editable roster.** Add players through a live NBA search, replace a player, or remove one, all from the
   sidebar. Mark each player Starting or Bench as a planning label. Upcoming games involving bench players
-  are highlighted first, with a quick action to move them to Starting. These labels are saved in Supabase
-  and do not change the lineup on your fantasy platform.
+  are highlighted first; choose a starter to swap to Bench when moving one of them into Starting. Both
+  labels are saved together in Supabase and do not change the lineup on your fantasy platform.
 - **Cost controls.** The agent runs at most once per day, results are cached in Postgres, and the
   password-protected Refresh button re-runs it on demand.
 - **API status panel.** Shows OpenAI token usage, rate-limit headroom and clear error reasons (for example,
